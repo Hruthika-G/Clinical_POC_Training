@@ -1,0 +1,148 @@
+---
+title: "POC2_RMarkdown"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r cars, message=FALSE, warning=FALSE}
+library(readxl)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+
+#1. Create data frame "dfCountries", load countries population file in it.
+dfCountries <- read.csv("Countries Population.csv")
+
+
+#2. Sort countries according to their population in ascending and descending order
+# To sort countries according to population in ascending order
+head(dfCountries[order(dfCountries$Total.Population.2017),])
+#To sort countries according to population in descending order
+head(dfCountries[order(-dfCountries$Total.Population.2017),])
+
+
+#3. A vector of countries with population more than 10000000
+countries <- dfCountries$Country.Name[dfCountries$Total.Population.2017 > 10000000]
+
+
+#4. Create a dataframe "dfBigAndSmall" that has countries with population greater than 10M and less than 2M.
+dfBigAndSmall <- filter(dfCountries, Total.Population.2017 > 1000000 & Total.Population.2017 < 2000000)  
+head(dfBigAndSmall)  
+  
+  
+#5. Create levels of income group from dataset "Countries region mapping" levels: Low, Lower mid, Upper mid, High
+# To load countries Region Mapping dataset
+df2 <- read_excel('Countries Region Mapping.xlsx')   
+df2$IncomeGroup <- factor(df2$IncomeGroup, levels = c("Low income", "Lower middle income", "Upper middle income", "High income"), labels = c("Low", "Lower mid", "Upper mid", "High")) 
+head(df2$IncomeGroup)  
+  
+#6. Merge the 3 datasets attached into 1 dataframe : "dfCountryMaster"
+# To read countries indicators csv file
+df3 <- read.csv("Countries Indicators.csv")
+# To merge Countries Population and Countries Region Mapping  data frames
+df_merge1 <- merge(x=dfCountries, y=df2, by = "Country.Code", all=TRUE)
+head(df_merge1)
+#To check the class of data frame
+class(df_merge1)
+#To merge df_merge1 and Countries Indicators data frames
+dfCountryMaster <- merge(x=df_merge1, y=df3, by="Country.Code", all=TRUE)
+head(dfCountryMaster)
+colnames(dfCountryMaster)
+#To check dimensions of 3 datasets
+dim(dfCountries)
+dim(df2)
+dim(df3)
+# To check dimensions of merged dataset
+dim(dfCountryMaster)
+# To check coloumns of merged dataset
+names(dfCountryMaster)
+
+#7. Summarize dfCountryMaster countries by region.
+dfCountryMaster %>% group_by(Region) %>% summarise( num_countries = n())
+
+#8. Summarize dfCountryMaster countries by region and income group.
+dfCountryMaster %>% group_by(Region, IncomeGroup) %>% summarise(num_countries = n()) 
+
+#9. Summarize dfCountryMaster countries by region. Result to have the following columns in it.
+#a. Number of countries.
+#b. Total population in millions.
+#c. Average of GDP per capital
+#d. Countries with low income.
+#e. Median GDP per capital
+#f. minimum and maximum mortality rate under 5.
+
+Summary_countries_by_region  <- dfCountryMaster %>% group_by(Region) %>%
+                                summarise( num_countries = n(),
+                                           total_population_million = sum(Total.Population.2017, na.rm = TRUE)/1e6,
+                                           avg_GDP_per_capital = mean(as.numeric(GDP.per.capita.2017), na.rm = TRUE),
+                                           low_income_countries = sum(IncomeGroup == "Low income", na.rm = TRUE),
+                                           median_gdp_per_capita = median(as.numeric(GDP.per.capita.2017), na.rm = TRUE),
+                                           min_mortality_under_5 = min(Under.5.Mortality.Rate.2017, na.rm = TRUE),
+                                           max_mortality_under_5 = max(Under.5.Mortality.Rate.2017, na.rm = TRUE)
+                                )
+
+
+#10. Write the above result in csv.
+write.csv(Summary_countries_by_region, file = "Country Summary by Region.csv", row.names = FALSE)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+#11. Histogram of gdp per capital
+GDP_capital <- ggplot(data = dfCountryMaster, aes(x = as.numeric(GDP.per.capita.2017))) + geom_histogram(bins=8, fill = "steelblue", color = "black") +
+       labs(title = "Histogram of GDP per Capital(2017)", x="GDP per Capital", y = "Number of Countries")
+# To enhance visualization
+ggplotly(GDP_capital)
+
+
+
+#12. Plot of income group by region.
+# Remove rows with NA in IncomeGroup or Region to avoid confusion
+df_filtered <- dfCountryMaster %>% filter(!is.na(IncomeGroup), !is.na(Region), !is.na(Under.5.Mortality.Rate.2017), !is.na(GDP.per.capita.2017))
+ggplot(data = df_filtered, aes(x = IncomeGroup, fill = Region)) +
+       geom_bar(position="dodge") + labs( title = "Income Group by Region",
+                                          x = "Income Group",
+                                          y = "Frequency",
+                                          fill = "Region") + 
+       theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+                                    
+
+
+#13. Plot of mortality rate under 5 by region
+ggplot(data=df_filtered, aes(x = Region, y = as.numeric(Under.5.Mortality.Rate.2017), fill = Region), na.rm=TRUE) +
+  geom_boxplot() + labs( title = "Mortality rate Under-5 by Region",
+                         x = "Region",
+                         y = "Mortality  Under 5",
+                         fill = "Region") + theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#14. Scatter plot of mortality rate under 5 against GDP per capital.
+ggplot(df_filtered, aes(x = as.numeric(GDP.per.capita.2017), y = as.numeric(Under.5.Mortality.Rate.2017))) +
+  geom_point(color = "blue", size = 2, alpha = 0.6) + geom_smooth(se = FALSE, color = "green", size = 0.6) +
+  labs( title = "Mortality Rate Under-5 vs GDP per Capital",
+        x = "GDP per Capital (2017)",
+        y = "Mortality Rate Under 5") 
+
+
+#15. Plot of mortality rate under 5 against GDP and region.
+ggplot(df_filtered, aes( x = as.numeric(GDP.per.capita.2017), y = as.numeric(Under.5.Mortality.Rate.2017), color = factor(Region))) +
+  geom_point(size = 2, alpha = 0.6) + geom_smooth(se = FALSE, color = "green", size = 0.6) +
+  labs( title = "Mortality Rate Under-5 vs GDP per Capita by Region",
+        x = "GDP per Capita (2017)",
+        y = "Mortality Rate Under 5",
+        color = "Region") 
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
